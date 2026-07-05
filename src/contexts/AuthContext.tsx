@@ -9,7 +9,7 @@ import {
   createUserWithEmailAndPassword,
   sendPasswordResetEmail,
 } from "firebase/auth";
-import { doc, getDoc, setDoc, updateDoc } from "firebase/firestore";
+import { doc, getDoc, setDoc, updateDoc, collection, getDocs, query, limit } from "firebase/firestore";
 import { auth, db } from "@/lib/firebase";
 import toast from "react-hot-toast";
 
@@ -76,11 +76,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const signup = async (email: string, password: string, name: string, role: string) => {
     const cred = await createUserWithEmailAndPassword(auth, email, password);
+
+    const existingUsers = await getDocs(query(collection(db, "users"), limit(1)));
+    const isFirstUser = existingUsers.empty;
+
     const userDataObj: UserData = {
       uid: cred.user.uid,
       email,
       displayName: name,
-      role: role as UserData["role"],
+      role: isFirstUser ? "admin" : (role as UserData["role"]),
       username: name.toLowerCase().replace(/\s+/g, "_"),
       createdAt: new Date().toISOString(),
       plan: "free",

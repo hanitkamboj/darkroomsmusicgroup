@@ -1,16 +1,16 @@
 import { initializeApp, getApps } from "firebase/app";
-import { getAuth } from "firebase/auth";
-import { getFirestore } from "firebase/firestore";
-import { getStorage } from "firebase/storage";
+import { getAuth, connectAuthEmulator } from "firebase/auth";
+import { getFirestore, connectFirestoreEmulator } from "firebase/firestore";
+import { getStorage, connectStorageEmulator } from "firebase/storage";
 
 const firebaseConfig = {
-  apiKey: "AIzaSyCrqBsnd5T539L3V7PCC_FeBeAJFMA4y0s",
-  authDomain: "sonifall.firebaseapp.com",
-  projectId: "sonifall",
-  storageBucket: "sonifall.firebasestorage.app",
-  messagingSenderId: "822971265775",
-  appId: "1:822971265775:web:d406dbb037db4f2512e11a",
-  measurementId: "G-WKLJ9CRB2C",
+  apiKey: "AIzaSyCXc3kpc2c0vBRUMim2IswEbN9LMLqc4v0",
+  authDomain: "darkrooms-music-group-9c6ad.firebaseapp.com",
+  projectId: "darkrooms-music-group-9c6ad",
+  storageBucket: "darkrooms-music-group-9c6ad.firebasestorage.app",
+  messagingSenderId: "492791644825",
+  appId: "1:492791644825:web:11e5c6af9584e7382eae08",
+  measurementId: "G-E35KPJL4B1",
 };
 
 const app = getApps().length ? getApps()[0] : initializeApp(firebaseConfig);
