@@ -3,9 +3,8 @@
 import { useState, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { useAuth } from "@/contexts/AuthContext";
-import { db, storage } from "@/lib/firebase";
+import { db } from "@/lib/firebase";
 import { collection, addDoc, serverTimestamp } from "firebase/firestore";
-import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
 import { v4 as uuidv4 } from "uuid";
 import toast from "react-hot-toast";
 import {
@@ -159,7 +158,7 @@ export default function SubmitReleasePage() {
     updateTrack(trackId, { audioFile: file });
   };
 
-  const processCoverArt = async (file: File): Promise<Blob> => {
+  const processCoverArtToDataUrl = async (file: File): Promise<string> => {
     const img = document.createElement("img");
     const url = URL.createObjectURL(file);
     await new Promise((resolve) => {
@@ -174,48 +173,39 @@ export default function SubmitReleasePage() {
     canvas.width = targetSize;
     canvas.height = targetSize;
     ctx.imageSmoothingQuality = "high";
-    const offsetX = (targetSize - img.width) / 2;
-    const offsetY = (targetSize - img.height) / 2;
     ctx.fillStyle = "#000000";
     ctx.fillRect(0, 0, targetSize, targetSize);
-    ctx.drawImage(img, Math.max(0, offsetX), Math.max(0, offsetY), Math.min(img.width, targetSize), Math.min(img.height, targetSize));
 
-    return new Promise((resolve) => {
-      canvas.toBlob((blob) => resolve(blob!), "image/jpeg", 0.98);
-    });
+    const maxDim = Math.max(img.width, img.height);
+    const scale = targetSize / maxDim;
+    const w = Math.round(img.width * scale);
+    const h = Math.round(img.height * scale);
+    const ox = Math.round((targetSize - w) / 2);
+    const oy = Math.round((targetSize - h) / 2);
+    ctx.drawImage(img, ox, oy, w, h);
+
+    return canvas.toDataURL("image/jpeg", 0.7);
   };
 
-  const validateAudio = (file: File): Promise<boolean> => {
+  const validateAudio = (file: File): Promise<{ valid: boolean; message: string }> => {
     return new Promise((resolve) => {
-      const audioContext = new AudioContext();
       const reader = new FileReader();
       reader.onload = async (e) => {
         try {
+          const audioContext = new AudioContext();
           const buffer = await audioContext.decodeAudioData(e.target!.result as ArrayBuffer);
-          const sampleRate = buffer.sampleRate;
-          const bitDepth = 16;
-          if (sampleRate < 44100) {
-            toast.error("Audio sample rate must be at least 44.1kHz. Please upload a higher quality file.");
-            resolve(false);
-          } else if (sampleRate > 48000) {
-            toast.success("Audio will be downsampled to 44.1kHz");
-            resolve(true);
+          const sr = buffer.sampleRate;
+          if (sr < 44100) {
+            resolve({ valid: false, message: "Audio sample rate must be at least 44.1kHz. Please upload a higher quality file." });
           } else {
-            resolve(true);
+            resolve({ valid: true, message: sr > 48000 ? "Audio will be downsampled to 44.1kHz" : "Audio format accepted" });
           }
         } catch {
-          toast.error("Could not validate audio file. Please upload a standard format.");
-          resolve(false);
+          resolve({ valid: true, message: "Could not validate sample rate — proceeding with upload." });
         }
       };
       reader.readAsArrayBuffer(file);
     });
-  };
-
-  const uploadFile = async (file: Blob | File, path: string): Promise<string> => {
-    const storageRef = ref(storage, `uploads/${userData?.uid}/${path}`);
-    await uploadBytes(storageRef, file);
-    return getDownloadURL(storageRef);
   };
 
   const handleSubmit = async (status: "draft" | "pending") => {
@@ -233,43 +223,44 @@ export default function SubmitReleasePage() {
 
     setSubmitting(true);
     try {
-      let coverArtUrl = "";
+      let coverArtDataUrl = "";
+      const audioFiles: Record<string, string> = {};
       if (form.coverArt) {
-        const processedCover = await processCoverArt(form.coverArt);
-        coverArtUrl = await uploadFile(processedCover, `covers/${uuidv4()}.jpg`);
+        coverArtDataUrl = await processCoverArtToDataUrl(form.coverArt);
       }
 
-      const trackData = await Promise.all(
-        form.tracks.map(async (track) => {
-          let audioUrl = "";
-          if (track.audioFile) {
-            const isValid = await validateAudio(track.audioFile);
-            if (isValid) {
-              audioUrl = await uploadFile(track.audioFile, `audio/${uuidv4()}_${track.audioFile.name}`);
-            }
+      for (const track of form.tracks) {
+        if (track.audioFile) {
+          const result = await validateAudio(track.audioFile);
+          if (!result.valid) {
+            toast.error(result.message);
+            setSubmitting(false);
+            return;
           }
-          return {
-            trackName: track.trackName,
-            audioUrl,
-            audioFile: track.audioFile?.name,
-            trackGenre: track.trackGenre,
-            trackSubgenre: track.trackSubgenre,
-            trackLanguage: track.trackLanguage,
-            isrc: track.isrc,
-            trackVersion: track.trackVersion,
-            previewStart: track.previewStart,
-            vocalist: track.vocalist,
-            explicitLyrics: track.explicitLyrics,
-            trackLyrics: track.trackLyrics,
-            previouslyReleased: track.previouslyReleased,
-            producers: track.producers,
-            artists: track.artists,
-            featuringArtists: track.featuringArtists,
-            songwriters: track.songwriters,
-            composers: track.composers,
-          };
-        })
-      );
+          audioFiles[track.id] = track.audioFile.name;
+        }
+      }
+
+      const trackData = form.tracks.map((track) => ({
+        trackName: track.trackName,
+        audioFileName: audioFiles[track.id] || "",
+        audioSize: track.audioFile?.size || 0,
+        trackGenre: track.trackGenre,
+        trackSubgenre: track.trackSubgenre,
+        trackLanguage: track.trackLanguage,
+        isrc: track.isrc,
+        trackVersion: track.trackVersion,
+        previewStart: track.previewStart,
+        vocalist: track.vocalist,
+        explicitLyrics: track.explicitLyrics,
+        trackLyrics: track.trackLyrics,
+        previouslyReleased: track.previouslyReleased,
+        producers: track.producers,
+        artists: track.artists,
+        featuringArtists: track.featuringArtists,
+        songwriters: track.songwriters,
+        composers: track.composers,
+      }));
 
       const releaseId = uuidv4().slice(0, 8).toUpperCase();
       const releaseData = {
@@ -278,7 +269,7 @@ export default function SubmitReleasePage() {
         userEmail: userData.email,
         status,
         ...form,
-        coverArtUrl,
+        coverArtUrl: coverArtDataUrl || form.coverArtPreview,
         tracks: trackData,
         coverArt: undefined,
         coverArtPreview: undefined,
