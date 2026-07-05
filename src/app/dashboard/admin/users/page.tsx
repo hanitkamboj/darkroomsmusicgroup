@@ -4,7 +4,7 @@ import { useState, useEffect } from "react";
 import { motion } from "framer-motion";
 import { db, auth } from "@/lib/firebase";
 import { collection, getDocs, doc, updateDoc, deleteDoc, setDoc } from "firebase/firestore";
-import { createUserWithEmailAndPassword, updatePassword, sendPasswordResetEmail } from "firebase/auth";
+import { sendPasswordResetEmail } from "firebase/auth";
 import { useAuth } from "@/contexts/AuthContext";
 import toast from "react-hot-toast";
 import { Users, Plus, Key, Shield, UserX, UserCog, Search, Mail, Lock, User } from "lucide-react";
@@ -45,9 +45,22 @@ export default function AdminUsersPage() {
       return;
     }
     try {
-      const cred = await createUserWithEmailAndPassword(auth, newUser.email, newUser.password);
-      await setDoc(doc(db, "users", cred.user.uid), {
-        uid: cred.user.uid,
+      const apiKey = "AIzaSyCXc3kpc2c0vBRUMim2IswEbN9LMLqc4v0";
+      const res = await fetch(`https://identitytoolkit.googleapis.com/v1/accounts:signUp?key=${apiKey}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          email: newUser.email,
+          password: newUser.password,
+          returnSecureToken: true,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error?.message || "Failed to create user");
+
+      const uid = data.localId;
+      await setDoc(doc(db, "users", uid), {
+        uid,
         email: newUser.email,
         displayName: newUser.displayName,
         role: newUser.role,
